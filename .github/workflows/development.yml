@@ -53,14 +53,14 @@ jobs:
           [IO.File]::WriteAllBytes($CERT_PATH,[System.Convert]::FromBase64String($Env:CERT_DATA))
           Get-FileHash $CERT_PATH
           echo "importing cert"
-          certutil -f -user -p "$Env:CERT_PASS" -importpfx MY "$CERT_PATH"
+          certutil -f -p "$Env:CERT_PASS" -importpfx MY "$CERT_PATH"
           echo "rmeoving cert"
           rm "$CERT_PATH"
           $INNO_S='/Ssigntool=$qC:/Program Files (x86)/Windows Kits/10/bin/10.0.17763.0/x86/signtool.exe$q sign /a /n $qNicola Murino$q /tr http://timestamp.sectigo.com /td sha256 /fd sha256 /d $qSFTPGo$q $f'
           echo "inno_s $INNO_S"
           iscc "$INNO_S" windows-installer\sftpgo.iss
           echo "remove cert"
-          certutil -user -delstore MY "Nicola Murino"
+          certutil -delstore MY "Nicola Murino"
         env:
           CERT_DATA: ${{ secrets.CERT_DATA }}
           CERT_PASS: ${{ secrets.CERT_PASS }}
