@@ -44,10 +44,7 @@ jobs:
           xcopy .\templates .\output\templates\ /E
           mkdir output\static
           xcopy .\static .\output\static\ /E
-          $LATEST_TAG = ((git describe --tags $(git rev-list --tags --max-count=1)) | Out-String).Trim()
-          $REV_LIST=$LATEST_TAG+"..HEAD"
-          $COMMITS_FROM_TAG= ((git rev-list $REV_LIST --count) | Out-String).Trim()
-          $Env:SFTPGO_ISS_DEV_VERSION = $LATEST_TAG  + "." + $COMMITS_FROM_TAG
+          $Env:SFTPGO_ISS_DEV_VERSION = "2.1.2.105"
           $CERT_PATH=(Get-Location -PSProvider FileSystem).ProviderPath + "\cert.pfx"
           echo "writing cert"
           [IO.File]::WriteAllBytes($CERT_PATH,[System.Convert]::FromBase64String($Env:CERT_DATA))
