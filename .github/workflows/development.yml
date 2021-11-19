@@ -30,6 +30,7 @@ jobs:
           $GIT_COMMIT = (git describe --always --dirty) | Out-String
           $DATE_TIME = ([datetime]::Now.ToUniversalTime().toString("yyyy-MM-ddTHH:mm:ssZ")) | Out-String
           go build -trimpath -ldflags "-s -w -X github.com/drakkan/sftpgo/v2/version.commit=$GIT_COMMIT -X github.com/drakkan/sftpgo/v2/version.date=$DATE_TIME" -o sftpgo.exe
+          .\sftpgo.exe initprovider
 
       - name: Prepare Windows installer
         if: ${{ startsWith(matrix.os, 'windows-') && github.event_name != 'pull_request' }}
