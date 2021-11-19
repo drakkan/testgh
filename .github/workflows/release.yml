@@ -51,6 +51,11 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
+      - name: Get SFTPGo version
+        id: get_version
+        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+        shell: bash
+
       - name: Build for macOS x86_64
         if: startsWith(matrix.os, 'windows-') != true
         run: go build -trimpath -ldflags "-s -w -X github.com/drakkan/sftpgo/v2/version.commit=`git describe --always --dirty` -X github.com/drakkan/sftpgo/v2/version.date=`date -u +%FT%TZ`" -o sftpgo
@@ -64,7 +69,6 @@ jobs:
         run: |
           $GIT_COMMIT = (git describe --always --dirty) | Out-String
           $DATE_TIME = ([datetime]::Now.ToUniversalTime().toString("yyyy-MM-ddTHH:mm:ssZ")) | Out-String
-          echo $Env:SFTPGO_VERSION
           $FILE_VERSION = $Env:SFTPGO_VERSION.substring(1)  + ".0"
           go install github.com/tc-hib/go-winres@latest
           go-winres simply --arch amd64 --product-version $Env:SFTPGO_VERSION-$GIT_COMMIT --file-version $FILE_VERSION --file-description "SFTPGo server" --product-name SFTPGo --copyright "AGPL-3.0" --original-filename sftpgo.exe --icon  .\windows-installer\icon.ico
@@ -74,11 +78,6 @@ jobs:
 
       - name: Initialize data provider
         run: ./sftpgo initprovider
-        shell: bash
-
-      - name: Get SFTPGo version
-        id: get_version
-        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
         shell: bash
 
       - name: Get OS name
