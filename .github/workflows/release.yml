@@ -138,7 +138,7 @@ jobs:
           [IO.File]::WriteAllBytes($CERT_PATH,[System.Convert]::FromBase64String("${{ secrets.CERT_DATA }}"))
           certutil -f -p "${{ secrets.CERT_PASS }}" -importpfx "$CERT_PATH"
           rm "$CERT_PATH"
-          $INNO_S='/Ssigntool=$qC:/Program Files (x86)/Windows Kits/10/bin/10.0.17763.0/x86/signtool.exe$q sign /a /n $qNicola Murino$q /tr http://timestamp.sectigo.com /td sha256 /fd sha256 /d $qSFTPGo$q $f'
+          $INNO_S='/Ssigntool=$qC:/Program Files (x86)/Windows Kits/10/bin/10.0.17763.0/x86/signtool.exe$q sign /sm /tr http://timestamp.sectigo.com /td sha256 /fd sha256 /n $qNicola Murino$q /d $qSFTPGo$q $f'
           iscc "$INNO_S" windows-installer\sftpgo.iss
           certutil -delstore "Nicola Murino"
         env:
