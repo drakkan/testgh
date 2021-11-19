@@ -29,17 +29,7 @@ jobs:
         run: |
           $GIT_COMMIT = (git describe --always --dirty) | Out-String
           $DATE_TIME = ([datetime]::Now.ToUniversalTime().toString("yyyy-MM-ddTHH:mm:ssZ")) | Out-String
-          $LATEST_TAG = ((git describe --tags $(git rev-list --tags --max-count=1)) | Out-String).Trim()
-          $REV_LIST=$LATEST_TAG+"..HEAD"
-          $COMMITS_FROM_TAG= ((git rev-list $REV_LIST --count) | Out-String).Trim()
-          $FILE_VERSION = $LATEST_TAG.substring(1)  + "." + $COMMITS_FROM_TAG
-          go install github.com/tc-hib/go-winres@latest
-          go-winres simply --arch amd64 --product-version $LATEST_TAG-dev-$GIT_COMMIT --file-version $FILE_VERSION --file-description "SFTPGo server" --product-name SFTPGo --copyright "AGPL-3.0" --original-filename sftpgo.exe --icon  .\windows-installer\icon.ico
           go build -trimpath -ldflags "-s -w -X github.com/drakkan/sftpgo/v2/version.commit=$GIT_COMMIT -X github.com/drakkan/sftpgo/v2/version.date=$DATE_TIME" -o sftpgo.exe
-          cd tests/eventsearcher
-          go mod tidy
-          go build -trimpath -ldflags "-s -w" -o eventsearcher.exe
-          cd ../..
 
       - name: Prepare Windows installer
         if: ${{ startsWith(matrix.os, 'windows-') && github.event_name != 'pull_request' }}
@@ -60,6 +50,7 @@ jobs:
           $CERT_PATH=(Get-Location -PSProvider FileSystem).ProviderPath + "\cert.pfx"
           echo "writing cert"
           [IO.File]::WriteAllBytes($CERT_PATH,[System.Convert]::FromBase64String($Env:CERT_DATA))
+          Get-FileHash $CERT_PATH
           echo "importing cert"
           certutil -f -user -p "$Env:CERT_PASS" -importpfx MY "$CERT_PATH"
           echo "rmeoving cert"
