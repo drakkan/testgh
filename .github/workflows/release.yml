@@ -140,7 +140,7 @@ jobs:
           rm "$CERT_PATH"
           & 'C:/Program Files (x86)/Windows Kits/10/bin/10.0.17763.0/x86/signtool.exe' sign /sm /tr http://timestamp.sectigo.com /td sha256 /fd sha256 /n "Nicola Murino" /d "SFTPGo" .\sftpgo.exe
           $INNO_S='/Ssigntool=$qC:/Program Files (x86)/Windows Kits/10/bin/10.0.17763.0/x86/signtool.exe$q sign /sm /tr http://timestamp.sectigo.com /td sha256 /fd sha256 /n $qNicola Murino$q /d $qSFTPGo$q $f'
-          iscc "$INNO_S" windows-installer\sftpgo.iss
+          iscc "$INNO_S" .\windows-installer\sftpgo.iss
           certutil -delstore MY "Nicola Murino"
         env:
           SFTPGO_ISS_VERSION: ${{ steps.get_version.outputs.VERSION }}
