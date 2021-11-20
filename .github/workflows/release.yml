@@ -478,7 +478,7 @@ jobs:
       - name: Download RPM armv7 artifact
         uses: actions/download-artifact@v2
         with:
-          name: sftpgo-${{ steps.get_version.outputs.PKG_VERSION }}-1.arm.rpm
+          name: sftpgo-${{ steps.get_version.outputs.PKG_VERSION }}-1.armv7hl.rpm
 
       - name: Download macOS x86_64 artifact
         uses: actions/download-artifact@v2
