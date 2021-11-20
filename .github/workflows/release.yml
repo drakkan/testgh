@@ -56,6 +56,19 @@ jobs:
         run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
         shell: bash
 
+      - name: Get OS name
+        id: get_os_name
+        run: |
+          if [[ $MATRIX_OS =~ ^macos.* ]]
+          then
+            echo ::set-output name=OS::macOS
+          else
+            echo ::set-output name=OS::windows
+          fi
+        shell: bash
+        env:
+          MATRIX_OS: ${{ matrix.os }}
+
       - name: Build for macOS x86_64
         if: startsWith(matrix.os, 'windows-') != true
         run: go build -trimpath -ldflags "-s -w -X github.com/drakkan/sftpgo/v2/version.commit=`git describe --always --dirty` -X github.com/drakkan/sftpgo/v2/version.date=`date -u +%FT%TZ`" -o sftpgo
@@ -79,19 +92,6 @@ jobs:
       - name: Initialize data provider
         run: ./sftpgo initprovider
         shell: bash
-
-      - name: Get OS name
-        id: get_os_name
-        run: |
-          if [[ $MATRIX_OS =~ ^macos.* ]]
-          then
-            echo ::set-output name=OS::macOS
-          else
-            echo ::set-output name=OS::windows
-          fi
-        shell: bash
-        env:
-          MATRIX_OS: ${{ matrix.os }}
 
       - name: Prepare Release for macOS
         if: startsWith(matrix.os, 'macos-')
@@ -138,9 +138,19 @@ jobs:
           [IO.File]::WriteAllBytes($CERT_PATH,[System.Convert]::FromBase64String($Env:CERT_DATA))
           certutil -f -p "$Env:CERT_PASS" -importpfx MY "$CERT_PATH"
           rm "$CERT_PATH"
+          & 'C:/Program Files (x86)/Windows Kits/10/bin/10.0.17763.0/x86/signtool.exe' sign /sm /tr http://timestamp.sectigo.com /td sha256 /fd sha256 /n "Nicola Murino" /d "SFTPGo" .\sftpgo.exe
           $INNO_S='/Ssigntool=$qC:/Program Files (x86)/Windows Kits/10/bin/10.0.17763.0/x86/signtool.exe$q sign /sm /tr http://timestamp.sectigo.com /td sha256 /fd sha256 /n $qNicola Murino$q /d $qSFTPGo$q $f'
           iscc "$INNO_S" windows-installer\sftpgo.iss
+          certutil -delstore MY "Nicola Murino"
+        env:
+          SFTPGO_ISS_VERSION: ${{ steps.get_version.outputs.VERSION }}
+          SFTPGO_ISS_DOC_URL: https://github.com/drakkan/sftpgo/blob/${{ steps.get_version.outputs.VERSION }}/README.md
+          CERT_DATA: ${{ secrets.CERT_DATA }}
+          CERT_PASS: ${{ secrets.CERT_PASS }}
 
+      - name: Prepare Portable Release for Windows
+        if: startsWith(matrix.os, 'windows-')
+        run: |
           mkdir win-portable
           copy .\sftpgo.exe .\win-portable
           copy .\sftpgo.json .\win-portable
@@ -150,15 +160,7 @@ jobs:
           xcopy .\templates .\win-portable\templates\ /E
           mkdir win-portable\static
           xcopy .\static .\win-portable\static\ /E
-          & 'C:/Program Files (x86)/Windows Kits/10/bin/10.0.17763.0/x86/signtool.exe' sign /sm /tr http://timestamp.sectigo.com /td sha256 /fd sha256 /n "Nicola Murino" /d "SFTPGo" .\win-portable\sftpgo.exe
           Compress-Archive .\win-portable\* sftpgo_portable_x86_64.zip
-          & 'C:/Program Files (x86)/Windows Kits/10/bin/10.0.17763.0/x86/signtool.exe' sign /sm /tr http://timestamp.sectigo.com /td sha256 /fd sha256 /n "Nicola Murino" /d "SFTPGo Portable" sftpgo_portable_x86_64.zip
-          certutil -delstore MY "Nicola Murino"
-        env:
-          SFTPGO_ISS_VERSION: ${{ steps.get_version.outputs.VERSION }}
-          SFTPGO_ISS_DOC_URL: https://github.com/drakkan/sftpgo/blob/${{ steps.get_version.outputs.VERSION }}/README.md
-          CERT_DATA: ${{ secrets.CERT_DATA }}
-          CERT_PASS: ${{ secrets.CERT_PASS }}
 
       - name: Upload macOS x86_64 artifact
         if: startsWith(matrix.os, 'macos-')
