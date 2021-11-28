@@ -1,6 +1,6 @@
 // Package httpd implements REST API and Web interface for SFTPGo.
 // The OpenAPI 3 schema for the exposed API can be found inside the source tree:
-// https://github.com/drakkan/sftpgo/blob/main/httpd/schema/openapi.yaml
+// https://github.com/drakkan/sftpgo/blob/main/openapi/openapi.yaml
 package httpd
 
 import (
@@ -136,12 +136,14 @@ const (
 	webClientPubSharesPathDefault         = "/web/client/pubshares"
 	webClientForgotPwdPathDefault         = "/web/client/forgot-password"
 	webClientResetPwdPathDefault          = "/web/client/reset-password"
+	webClientViewPDFPathDefault           = "/web/client/viewpdf"
 	webStaticFilesPathDefault             = "/static"
+	webOpenAPIPathDefault                 = "/openapi"
 	// MaxRestoreSize defines the max size for the loaddata input file
 	MaxRestoreSize       = 10485760 // 10 MB
 	maxRequestSize       = 1048576  // 1MB
 	maxLoginBodySize     = 262144   // 256 KB
-	httpdMaxEditFileSize = 524288   // 512 KB
+	httpdMaxEditFileSize = 1048576  // 1 MB
 	maxMultipartMem      = 8388608  // 8MB
 	osWindows            = "windows"
 	otpHeaderCode        = "X-SFTPGO-OTP"
@@ -209,7 +211,9 @@ var (
 	webClientLogoutPath            string
 	webClientForgotPwdPath         string
 	webClientResetPwdPath          string
+	webClientViewPDFPath           string
 	webStaticFilesPath             string
+	webOpenAPIPath                 string
 	// max upload size for http clients, 1GB by default
 	maxUploadFileSize = int64(1048576000)
 )
@@ -256,7 +260,9 @@ type Binding struct {
 	// - 1 the login link to the web client login page is hidden on admin login page
 	// - 2 the login link to the web admin login page is hidden on client login page
 	// The flags can be combined, for example 3 will disable both login links.
-	HideLoginURL     int `json:"hide_login_url" mapstructure:"hide_login_url"`
+	HideLoginURL int `json:"hide_login_url" mapstructure:"hide_login_url"`
+	// Enable the built-in OpenAPI renderer
+	RenderOpenAPI    bool `json:"render_openapi" mapstructure:"render_openapi"`
 	allowHeadersFrom []func(net.IP) bool
 }
 
@@ -341,6 +347,9 @@ type Conf struct {
 	StaticFilesPath string `json:"static_files_path" mapstructure:"static_files_path"`
 	// Path to the backup directory. This can be an absolute path or a path relative to the config dir
 	BackupsPath string `json:"backups_path" mapstructure:"backups_path"`
+	// Path to the directory that contains the OpenAPI schema and the default renderer.
+	// This can be an absolute path or a path relative to the config dir
+	OpenAPIPath string `json:"openapi_path" mapstructure:"openapi_path"`
 	// Defines a base URL for the web admin and client interfaces. If empty web admin and client resources will
 	// be available at the root ("/") URI. If defined it must be an absolute URI or it will be ignored.
 	WebRoot string `json:"web_root" mapstructure:"web_root"`
@@ -420,6 +429,7 @@ func (c *Conf) Initialize(configDir string) error {
 	backupsPath = getConfigPath(c.BackupsPath, configDir)
 	staticFilesPath := getConfigPath(c.StaticFilesPath, configDir)
 	templatesPath := getConfigPath(c.TemplatesPath, configDir)
+	openAPIPath := getConfigPath(c.OpenAPIPath, configDir)
 	if backupsPath == "" {
 		return fmt.Errorf("required directory is invalid, backup path %#v", backupsPath)
 	}
@@ -469,7 +479,7 @@ func (c *Conf) Initialize(configDir string) error {
 		}
 
 		go func(b Binding) {
-			server := newHttpdServer(b, staticFilesPath, c.SigningPassphrase, c.Cors)
+			server := newHttpdServer(b, staticFilesPath, c.SigningPassphrase, c.Cors, openAPIPath)
 
 			exitChannel <- server.listenAndServe()
 		}(binding)
@@ -562,6 +572,7 @@ func updateWebClientURLs(baseURL string) {
 	webClientRecoveryCodesPath = path.Join(baseURL, webClientRecoveryCodesPathDefault)
 	webClientForgotPwdPath = path.Join(baseURL, webClientForgotPwdPathDefault)
 	webClientResetPwdPath = path.Join(baseURL, webClientResetPwdPathDefault)
+	webClientViewPDFPath = path.Join(baseURL, webClientViewPDFPathDefault)
 }
 
 func updateWebAdminURLs(baseURL string) {
@@ -603,6 +614,7 @@ func updateWebAdminURLs(baseURL string) {
 	webDefenderHostsPath = path.Join(baseURL, webDefenderHostsPathDefault)
 	webDefenderPath = path.Join(baseURL, webDefenderPathDefault)
 	webStaticFilesPath = path.Join(baseURL, webStaticFilesPathDefault)
+	webOpenAPIPath = path.Join(baseURL, webOpenAPIPathDefault)
 }
 
 // GetHTTPRouter returns an HTTP handler suitable to use for test cases
@@ -612,8 +624,9 @@ func GetHTTPRouter() http.Handler {
 		Port:            8080,
 		EnableWebAdmin:  true,
 		EnableWebClient: true,
+		RenderOpenAPI:   true,
 	}
-	server := newHttpdServer(b, "../static", "", CorsConfig{})
+	server := newHttpdServer(b, "../static", "", CorsConfig{}, "../openapi")
 	server.initializeRouter()
 	return server.router
 }

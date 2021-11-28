@@ -54,6 +54,10 @@ type Share struct {
 	UsedTokens int `json:"used_tokens,omitempty"`
 	// Limit the share availability to these IPs/CIDR networks
 	AllowFrom []string `json:"allow_from,omitempty"`
+	// set for restores, we don't have to validate the expiration date
+	// otherwise we fail to restore existing shares and we have to insert
+	// all the previous values with no modifications
+	IsRestore bool `json:"-"`
 }
 
 // GetScopeAsString returns the share's scope as string.
@@ -65,6 +69,14 @@ func (s *Share) GetScopeAsString() string {
 	default:
 		return "Write"
 	}
+}
+
+// IsExpired returns true if the share is expired
+func (s *Share) IsExpired() bool {
+	if s.ExpiresAt > 0 {
+		return s.ExpiresAt < util.GetTimeAsMsSinceEpoch(time.Now())
+	}
+	return false
 }
 
 // GetInfoString returns share's info as string.
@@ -202,7 +214,7 @@ func (s *Share) validate() error {
 		return err
 	}
 	if s.ExpiresAt > 0 {
-		if s.ExpiresAt < util.GetTimeAsMsSinceEpoch(time.Now()) {
+		if !s.IsRestore && s.ExpiresAt < util.GetTimeAsMsSinceEpoch(time.Now()) {
 			return util.NewValidationError("expiration must be in the future")
 		}
 	} else {
@@ -220,6 +232,7 @@ func (s *Share) validate() error {
 	if err := s.hashPassword(); err != nil {
 		return err
 	}
+	s.AllowFrom = util.RemoveDuplicates(s.AllowFrom)
 	for _, IPMask := range s.AllowFrom {
 		_, _, err := net.ParseCIDR(IPMask)
 		if err != nil {

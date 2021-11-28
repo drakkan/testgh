@@ -260,26 +260,6 @@ func TestMain(m *testing.M) {
 
 	waitTCPListening(sftpdConf.Bindings[0].GetAddress())
 
-	sftpdConf.Bindings = []sftpd.Binding{
-		{
-			Port:             2224,
-			ApplyProxyConfig: true,
-		},
-	}
-	sftpdConf.PasswordAuthentication = true
-	common.Config.ProxyProtocol = 2
-	go func() {
-		logger.Debug(logSender, "", "initializing SFTP server with config %+v and proxy protocol %v",
-			sftpdConf, common.Config.ProxyProtocol)
-		if err := sftpdConf.Initialize(configDir); err != nil {
-			logger.ErrorToConsole("could not start SFTP server with proxy protocol 2: %v", err)
-			os.Exit(1)
-		}
-	}()
-
-	waitTCPListening(sftpdConf.Bindings[0].GetAddress())
-	getHostKeysFingerprints(sftpdConf.HostKeys)
-
 	prefixedConf := sftpdConf
 	prefixedConf.Bindings = []sftpd.Binding{
 		{
@@ -299,6 +279,26 @@ func TestMain(m *testing.M) {
 	}()
 
 	waitTCPListening(prefixedConf.Bindings[0].GetAddress())
+
+	sftpdConf.Bindings = []sftpd.Binding{
+		{
+			Port:             2224,
+			ApplyProxyConfig: true,
+		},
+	}
+	sftpdConf.PasswordAuthentication = true
+	common.Config.ProxyProtocol = 2
+	go func() {
+		logger.Debug(logSender, "", "initializing SFTP server with config %+v and proxy protocol %v",
+			sftpdConf, common.Config.ProxyProtocol)
+		if err := sftpdConf.Initialize(configDir); err != nil {
+			logger.ErrorToConsole("could not start SFTP server with proxy protocol 2: %v", err)
+			os.Exit(1)
+		}
+	}()
+
+	waitTCPListening(sftpdConf.Bindings[0].GetAddress())
+	getHostKeysFingerprints(sftpdConf.HostKeys)
 
 	exitCode := m.Run()
 	os.Remove(logFilePath)
@@ -2789,6 +2789,74 @@ func TestLoginExternalAuthPwdAndPubKey(t *testing.T) {
 	_, err = httpdtest.RemoveUser(user, http.StatusOK)
 	assert.NoError(t, err)
 	err = os.RemoveAll(user.GetHomeDir())
+	assert.NoError(t, err)
+
+	err = dataprovider.Close()
+	assert.NoError(t, err)
+	err = config.LoadConfig(configDir, "")
+	assert.NoError(t, err)
+	providerConf = config.GetProviderConf()
+	err = dataprovider.Initialize(providerConf, configDir, true)
+	assert.NoError(t, err)
+	err = os.Remove(extAuthPath)
+	assert.NoError(t, err)
+}
+
+func TestExternalAuthMultiStepLoginKeyAndPwd(t *testing.T) {
+	if runtime.GOOS == osWindows {
+		t.Skip("this test is not available on Windows")
+	}
+	u := getTestUser(true)
+	u.Password = defaultPassword
+	u.Filters.DeniedLoginMethods = append(u.Filters.DeniedLoginMethods, []string{
+		dataprovider.SSHLoginMethodKeyAndKeyboardInt,
+		dataprovider.SSHLoginMethodPublicKey,
+		dataprovider.LoginMethodPassword,
+		dataprovider.SSHLoginMethodKeyboardInteractive,
+	}...)
+
+	err := dataprovider.Close()
+	assert.NoError(t, err)
+	err = config.LoadConfig(configDir, "")
+	assert.NoError(t, err)
+	providerConf := config.GetProviderConf()
+	err = os.WriteFile(extAuthPath, getExtAuthScriptContent(u, false, false, ""), os.ModePerm)
+	assert.NoError(t, err)
+	providerConf.ExternalAuthHook = extAuthPath
+	providerConf.ExternalAuthScope = 0
+	err = dataprovider.Initialize(providerConf, configDir, true)
+	assert.NoError(t, err)
+
+	signer, err := ssh.ParsePrivateKey([]byte(testPrivateKey))
+	assert.NoError(t, err)
+	authMethods := []ssh.AuthMethod{
+		ssh.PublicKeys(signer),
+		ssh.Password(defaultPassword),
+	}
+	conn, client, err := getCustomAuthSftpClient(u, authMethods, "")
+	if assert.NoError(t, err) {
+		defer conn.Close()
+		defer client.Close()
+		assert.NoError(t, checkBasicSFTP(client))
+	}
+	// wrong sequence should fail
+	authMethods = []ssh.AuthMethod{
+		ssh.Password(defaultPassword),
+		ssh.PublicKeys(signer),
+	}
+	_, _, err = getCustomAuthSftpClient(u, authMethods, "")
+	assert.Error(t, err)
+
+	// public key only auth must fail
+	_, _, err = getSftpClient(u, true)
+	assert.Error(t, err)
+	// password only auth must fail
+	_, _, err = getSftpClient(u, false)
+	assert.Error(t, err)
+
+	_, err = httpdtest.RemoveUser(u, http.StatusOK)
+	assert.NoError(t, err)
+	err = os.RemoveAll(u.GetHomeDir())
 	assert.NoError(t, err)
 
 	err = dataprovider.Close()
@@ -9694,6 +9762,8 @@ func getScpDownloadCommand(localPath, remotePath string, preserveTime, recursive
 	args = append(args, "2022")
 	args = append(args, "-o")
 	args = append(args, "StrictHostKeyChecking=no")
+	args = append(args, "-o")
+	args = append(args, "HostKeyAlgorithms=+ssh-rsa")
 	args = append(args, "-i")
 	args = append(args, privateKeyPath)
 	args = append(args, remotePath)
@@ -9719,6 +9789,8 @@ func getScpUploadCommand(localPath, remotePath string, preserveTime, remoteToRem
 	args = append(args, "2022")
 	args = append(args, "-o")
 	args = append(args, "StrictHostKeyChecking=no")
+	args = append(args, "-o")
+	args = append(args, "HostKeyAlgorithms=+ssh-rsa")
 	args = append(args, "-i")
 	args = append(args, privateKeyPath)
 	args = append(args, localPath)

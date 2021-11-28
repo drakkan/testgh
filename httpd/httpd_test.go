@@ -27,6 +27,7 @@ import (
 	"github.com/go-chi/render"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
+	"github.com/lithammer/shortuuid/v3"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mhale/smtpd"
 	"github.com/pquerna/otp"
@@ -153,6 +154,7 @@ const (
 	webClientPubSharesPath          = "/web/client/pubshares"
 	webClientForgotPwdPath          = "/web/client/forgot-password"
 	webClientResetPwdPath           = "/web/client/reset-password"
+	webClientViewPDFPath            = "/web/client/viewpdf"
 	httpBaseURL                     = "http://127.0.0.1:8081"
 	sftpServerAddr                  = "127.0.0.1:8022"
 	smtpServerAddr                  = "127.0.0.1:3525"
@@ -4267,6 +4269,54 @@ func TestDefenderAPIErrors(t *testing.T) {
 
 	err = httpdtest.UnbanIP("", http.StatusBadRequest)
 	require.NoError(t, err)
+}
+
+func TestRestoreShares(t *testing.T) {
+	// shares should be restored preserving the UsedTokens, CreatedAt, LastUseAt, UpdatedAt,
+	// and ExpiresAt, so an expired share can be restored while we cannot create an already
+	// expired share
+	user, _, err := httpdtest.AddUser(getTestUser(), http.StatusCreated)
+	assert.NoError(t, err)
+	share := dataprovider.Share{
+		ShareID:     shortuuid.New(),
+		Name:        "share name",
+		Description: "share description",
+		Scope:       dataprovider.ShareScopeRead,
+		Paths:       []string{"/"},
+		Username:    user.Username,
+		CreatedAt:   util.GetTimeAsMsSinceEpoch(time.Now().Add(-144 * time.Hour)),
+		UpdatedAt:   util.GetTimeAsMsSinceEpoch(time.Now().Add(-96 * time.Hour)),
+		LastUseAt:   util.GetTimeAsMsSinceEpoch(time.Now().Add(-64 * time.Hour)),
+		ExpiresAt:   util.GetTimeAsMsSinceEpoch(time.Now().Add(-48 * time.Hour)),
+		MaxTokens:   10,
+		UsedTokens:  8,
+		AllowFrom:   []string{"127.0.0.0/8"},
+	}
+	backupData := dataprovider.BackupData{}
+	backupData.Shares = append(backupData.Shares, share)
+	backupContent, err := json.Marshal(backupData)
+	assert.NoError(t, err)
+	_, _, err = httpdtest.LoaddataFromPostBody(backupContent, "0", "0", http.StatusOK)
+	assert.NoError(t, err)
+	shareGet, err := dataprovider.ShareExists(share.ShareID, user.Username)
+	assert.NoError(t, err)
+	assert.Equal(t, share, shareGet)
+
+	share.CreatedAt = util.GetTimeAsMsSinceEpoch(time.Now().Add(-142 * time.Hour))
+	share.UpdatedAt = util.GetTimeAsMsSinceEpoch(time.Now().Add(-92 * time.Hour))
+	share.LastUseAt = util.GetTimeAsMsSinceEpoch(time.Now().Add(-62 * time.Hour))
+	share.UsedTokens = 6
+	backupData.Shares = []dataprovider.Share{share}
+	backupContent, err = json.Marshal(backupData)
+	assert.NoError(t, err)
+	_, _, err = httpdtest.LoaddataFromPostBody(backupContent, "0", "0", http.StatusOK)
+	assert.NoError(t, err)
+	shareGet, err = dataprovider.ShareExists(share.ShareID, user.Username)
+	assert.NoError(t, err)
+	assert.Equal(t, share, shareGet)
+
+	_, err = httpdtest.RemoveUser(user, http.StatusOK)
+	assert.NoError(t, err)
 }
 
 func TestLoaddataFromPostBody(t *testing.T) {
@@ -9320,13 +9370,38 @@ func TestUserAPIKey(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestWebClientViewPDF(t *testing.T) {
+	user, _, err := httpdtest.AddUser(getTestUser(), http.StatusCreated)
+	assert.NoError(t, err)
+
+	webToken, err := getJWTWebClientTokenFromTestServer(defaultUsername, defaultPassword)
+	assert.NoError(t, err)
+
+	req, err := http.NewRequest(http.MethodGet, webClientViewPDFPath, nil)
+	assert.NoError(t, err)
+	setJWTCookieForReq(req, webToken)
+	rr := executeRequest(req)
+	checkResponseCode(t, http.StatusBadRequest, rr)
+
+	req, err = http.NewRequest(http.MethodGet, webClientViewPDFPath+"?path=test.pdf", nil)
+	assert.NoError(t, err)
+	setJWTCookieForReq(req, webToken)
+	rr = executeRequest(req)
+	checkResponseCode(t, http.StatusOK, rr)
+
+	_, err = httpdtest.RemoveUser(user, http.StatusOK)
+	assert.NoError(t, err)
+	err = os.RemoveAll(user.GetHomeDir())
+	assert.NoError(t, err)
+}
+
 func TestWebEditFile(t *testing.T) {
 	user, _, err := httpdtest.AddUser(getTestUser(), http.StatusCreated)
 	assert.NoError(t, err)
 	testFile1 := "testfile1.txt"
 	testFile2 := "testfile2"
 	file1Size := int64(65536)
-	file2Size := int64(655360)
+	file2Size := int64(1048576 * 2)
 	err = createTestFile(filepath.Join(user.GetHomeDir(), testFile1), file1Size)
 	assert.NoError(t, err)
 	err = createTestFile(filepath.Join(user.GetHomeDir(), testFile2), file2Size)
@@ -10372,7 +10447,7 @@ func TestWebUploadSFTP(t *testing.T) {
 	req.Header.Add("Content-Type", writer.FormDataContentType())
 	setBearerForReq(req, webAPIToken)
 	rr = executeRequest(req)
-	checkResponseCode(t, http.StatusInternalServerError, rr)
+	checkResponseCode(t, http.StatusRequestEntityTooLarge, rr)
 	assert.Contains(t, rr.Body.String(), "denying write due to space limit")
 	// delete the file
 	req, err = http.NewRequest(http.MethodDelete, userFilesPath+"?path=file.txt", nil)
@@ -10388,7 +10463,7 @@ func TestWebUploadSFTP(t *testing.T) {
 	req.Header.Add("Content-Type", writer.FormDataContentType())
 	setBearerForReq(req, webAPIToken)
 	rr = executeRequest(req)
-	checkResponseCode(t, http.StatusInternalServerError, rr)
+	checkResponseCode(t, http.StatusRequestEntityTooLarge, rr)
 	assert.Contains(t, rr.Body.String(), "denying write due to space limit")
 
 	_, err = httpdtest.RemoveUser(sftpUser, http.StatusOK)
@@ -14837,8 +14912,36 @@ func TestGetWebStatusMock(t *testing.T) {
 }
 
 func TestStaticFilesMock(t *testing.T) {
-	req, _ := http.NewRequest(http.MethodGet, "/static/favicon.ico", nil)
+	req, err := http.NewRequest(http.MethodGet, "/static/favicon.ico", nil)
+	assert.NoError(t, err)
 	rr := executeRequest(req)
+	checkResponseCode(t, http.StatusOK, rr)
+
+	req, err = http.NewRequest(http.MethodGet, "/openapi/openapi.yaml", nil)
+	assert.NoError(t, err)
+	rr = executeRequest(req)
+	checkResponseCode(t, http.StatusOK, rr)
+
+	req, err = http.NewRequest(http.MethodGet, "/static", nil)
+	assert.NoError(t, err)
+	rr = executeRequest(req)
+	checkResponseCode(t, http.StatusMovedPermanently, rr)
+	location := rr.Header().Get("Location")
+	assert.Equal(t, "/static/", location)
+	req, err = http.NewRequest(http.MethodGet, location, nil)
+	assert.NoError(t, err)
+	rr = executeRequest(req)
+	checkResponseCode(t, http.StatusOK, rr)
+
+	req, err = http.NewRequest(http.MethodGet, "/openapi", nil)
+	assert.NoError(t, err)
+	rr = executeRequest(req)
+	checkResponseCode(t, http.StatusMovedPermanently, rr)
+	location = rr.Header().Get("Location")
+	assert.Equal(t, "/openapi/", location)
+	req, err = http.NewRequest(http.MethodGet, location, nil)
+	assert.NoError(t, err)
+	rr = executeRequest(req)
 	checkResponseCode(t, http.StatusOK, rr)
 }
 

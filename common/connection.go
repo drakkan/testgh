@@ -201,6 +201,17 @@ func (c *BaseConnection) getRealFsPath(fsPath string) string {
 	return fsPath
 }
 
+func (c *BaseConnection) setTimes(fsPath string, atime time.Time, mtime time.Time) {
+	c.RLock()
+	defer c.RUnlock()
+
+	for _, t := range c.activeTransfers {
+		if t.SetTimes(fsPath, atime, mtime) {
+			return
+		}
+	}
+}
+
 func (c *BaseConnection) truncateOpenHandle(fsPath string, size int64) (int64, error) {
 	c.RLock()
 	defer c.RUnlock()
@@ -558,6 +569,7 @@ func (c *BaseConnection) handleChtimes(fs vfs.Fs, fsPath, pathForPerms string, a
 			fsPath, attributes.Atime, attributes.Mtime, err)
 		return c.GetFsError(fs, err)
 	}
+	c.setTimes(fsPath, attributes.Atime, attributes.Mtime)
 	accessTimeString := attributes.Atime.Format(chtimesFormat)
 	modificationTimeString := attributes.Mtime.Format(chtimesFormat)
 	logger.CommandLog(chtimesLogSender, fsPath, "", c.User.Username, "", c.ID, c.protocol, -1, -1,
@@ -573,16 +585,22 @@ func (c *BaseConnection) SetStat(virtualPath string, attributes *StatAttributes)
 	}
 	pathForPerms := c.getPathForSetStatPerms(fs, fsPath, virtualPath)
 
+	if attributes.Flags&StatAttrTimes != 0 {
+		if err = c.handleChtimes(fs, fsPath, pathForPerms, attributes); err != nil {
+			return err
+		}
+	}
+
 	if attributes.Flags&StatAttrPerms != 0 {
-		return c.handleChmod(fs, fsPath, pathForPerms, attributes)
+		if err = c.handleChmod(fs, fsPath, pathForPerms, attributes); err != nil {
+			return err
+		}
 	}
 
 	if attributes.Flags&StatAttrUIDGID != 0 {
-		return c.handleChown(fs, fsPath, pathForPerms, attributes)
-	}
-
-	if attributes.Flags&StatAttrTimes != 0 {
-		return c.handleChtimes(fs, fsPath, pathForPerms, attributes)
+		if err = c.handleChown(fs, fsPath, pathForPerms, attributes); err != nil {
+			return err
+		}
 	}
 
 	if attributes.Flags&StatAttrSize != 0 {
@@ -590,7 +608,7 @@ func (c *BaseConnection) SetStat(virtualPath string, attributes *StatAttributes)
 			return c.GetPermissionDeniedError()
 		}
 
-		if err := c.truncateFile(fs, fsPath, virtualPath, attributes.Size); err != nil {
+		if err = c.truncateFile(fs, fsPath, virtualPath, attributes.Size); err != nil {
 			c.Log(logger.LevelWarn, "failed to truncate path %#v, size: %v, err: %+v", fsPath, attributes.Size, err)
 			return c.GetFsError(fs, err)
 		}

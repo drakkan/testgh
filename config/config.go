@@ -53,6 +53,7 @@ var (
 		ApplyProxyConfig:           true,
 		TLSMode:                    0,
 		ForcePassiveIP:             "",
+		PassiveIPOverrides:         nil,
 		ClientAuthType:             0,
 		TLSCipherSuites:            nil,
 		PassiveConnectionsSecurity: 0,
@@ -78,6 +79,7 @@ var (
 		TLSCipherSuites: nil,
 		ProxyAllowed:    nil,
 		HideLoginURL:    0,
+		RenderOpenAPI:   true,
 	}
 	defaultRateLimiter = common.RateLimiterConfig{
 		Average:                0,
@@ -273,6 +275,7 @@ func Init() {
 			TemplatesPath:      "templates",
 			StaticFilesPath:    "static",
 			BackupsPath:        "backups",
+			OpenAPIPath:        "openapi",
 			WebRoot:            "",
 			CertificateFile:    "",
 			CertificateKeyFile: "",
@@ -850,6 +853,31 @@ func getSFTPDBindindFromEnv(idx int) {
 	}
 }
 
+func getFTPDPassiveIPOverridesFromEnv(idx int) []ftpd.PassiveIPOverride {
+	var overrides []ftpd.PassiveIPOverride
+
+	for subIdx := 0; subIdx < 10; subIdx++ {
+		var override ftpd.PassiveIPOverride
+
+		ip, ok := os.LookupEnv(fmt.Sprintf("SFTPGO_FTPD__BINDINGS__%v__PASSIVE_IP_OVERRIDES__%v__IP", idx, subIdx))
+		if ok {
+			override.IP = ip
+		}
+
+		networks, ok := lookupStringListFromEnv(fmt.Sprintf("SFTPGO_FTPD__BINDINGS__%v__PASSIVE_IP_OVERRIDES__%v__NETWORKS",
+			idx, subIdx))
+		if ok {
+			override.Networks = networks
+		}
+
+		if len(override.Networks) > 0 {
+			overrides = append(overrides, override)
+		}
+	}
+
+	return overrides
+}
+
 func getFTPDBindingFromEnv(idx int) {
 	binding := ftpd.Binding{
 		ApplyProxyConfig: true,
@@ -887,6 +915,12 @@ func getFTPDBindingFromEnv(idx int) {
 	passiveIP, ok := os.LookupEnv(fmt.Sprintf("SFTPGO_FTPD__BINDINGS__%v__FORCE_PASSIVE_IP", idx))
 	if ok {
 		binding.ForcePassiveIP = passiveIP
+		isSet = true
+	}
+
+	passiveIPOverrides := getFTPDPassiveIPOverridesFromEnv(idx)
+	if len(passiveIPOverrides) > 0 {
+		binding.PassiveIPOverrides = passiveIPOverrides
 		isSet = true
 	}
 
@@ -992,6 +1026,7 @@ func getHTTPDBindingFromEnv(idx int) {
 	binding := httpd.Binding{
 		EnableWebAdmin:  true,
 		EnableWebClient: true,
+		RenderOpenAPI:   true,
 	}
 	if len(globalConf.HTTPDConfig.Bindings) > idx {
 		binding = globalConf.HTTPDConfig.Bindings[idx]
@@ -1020,6 +1055,12 @@ func getHTTPDBindingFromEnv(idx int) {
 	enableWebClient, ok := lookupBoolFromEnv(fmt.Sprintf("SFTPGO_HTTPD__BINDINGS__%v__ENABLE_WEB_CLIENT", idx))
 	if ok {
 		binding.EnableWebClient = enableWebClient
+		isSet = true
+	}
+
+	renderOpenAPI, ok := lookupBoolFromEnv(fmt.Sprintf("SFTPGO_HTTPD__BINDINGS__%v__RENDER_OPENAPI", idx))
+	if ok {
+		binding.RenderOpenAPI = renderOpenAPI
 		isSet = true
 	}
 
@@ -1219,6 +1260,7 @@ func setViperDefaults() {
 	viper.SetDefault("httpd.templates_path", globalConf.HTTPDConfig.TemplatesPath)
 	viper.SetDefault("httpd.static_files_path", globalConf.HTTPDConfig.StaticFilesPath)
 	viper.SetDefault("httpd.backups_path", globalConf.HTTPDConfig.BackupsPath)
+	viper.SetDefault("httpd.openapi_path", globalConf.HTTPDConfig.OpenAPIPath)
 	viper.SetDefault("httpd.web_root", globalConf.HTTPDConfig.WebRoot)
 	viper.SetDefault("httpd.certificate_file", globalConf.HTTPDConfig.CertificateFile)
 	viper.SetDefault("httpd.certificate_key_file", globalConf.HTTPDConfig.CertificateKeyFile)

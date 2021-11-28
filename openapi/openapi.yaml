@@ -22,7 +22,7 @@ info:
     SFTPGo also supports virtual folders, a virtual folder can use any of the supported storage backends. So you can have, for example, an S3 user that exposes a GCS bucket (or part of it) on a specified path and an encrypted local filesystem on another one.
     Virtual folders can be private or shared among multiple users, for shared virtual folders you can define different quota limits for each user.
     SFTPGo allows to create HTTP/S links to externally share files and folders securely, by setting limits to the number of downloads/uploads, protecting the share with a password, limiting access by source IP address, setting an automatic expiration date.
-  version: 2.1.2-dev
+  version: 2.2.0
   contact:
     name: API support
     url: 'https://github.com/drakkan/sftpgo'
@@ -124,6 +124,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/RequestEntityTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
         default:
@@ -2719,14 +2721,14 @@ paths:
             - 2
         description: |
           Mode:
-            * `0` New users/admins/API keys are added, existing ones are updated. This is the default
-            * `1` New users/admins/API keys are added, existing ones are not modified
-            * `2` New users/admins/API keys are added, existing ones are updated and connected users are disconnected and so forced to use the new configuration
+            * `0` New objects are added, existing ones are updated. This is the default
+            * `1` New objects are added, existing ones are not modified
+            * `2` New objects are added, existing ones are updated and connected users are disconnected and so forced to use the new configuration
     get:
       tags:
         - maintenance
       summary: Load data from path
-      description: 'Restores SFTPGo data from a JSON backup file on the server. Users, folders and admins will be restored one by one and the restore is stopped if a user/folder/admin cannot be added or updated, so it could happen a partial restore'
+      description: 'Restores SFTPGo data from a JSON backup file on the server. Objects will be restored one by one and the restore is stopped if a object cannot be added or updated, so it could happen a partial restore'
       operationId: loaddata_from_file
       parameters:
         - in: query
@@ -2758,7 +2760,7 @@ paths:
       tags:
         - maintenance
       summary: Load data
-      description: 'Restores SFTPGo data from a JSON backup. Users, folders and admins will be restored one by one and the restore is stopped if a user/folder/admin cannot be added or updated, so it could happen a partial restore'
+      description: 'Restores SFTPGo data from a JSON backup. Objects will be restored one by one and the restore is stopped if a object cannot be added or updated, so it could happen a partial restore'
       operationId: loaddata_from_request_body
       requestBody:
         required: true
@@ -3544,6 +3546,12 @@ paths:
           description: Path to the file to download. It must be URL encoded, for example the path "my dir/àdir/file.txt" must be sent as "my%20dir%2F%C3%A0dir%2Ffile.txt"
           schema:
             type: string
+        - in: query
+          name: inline
+          required: false
+          description: 'If set, the response will not have the Content-Disposition header set to `attachment`'
+          schema:
+            type: string
       responses:
         '200':
           description: successful operation
@@ -3610,6 +3618,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/RequestEntityTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
         default:
@@ -3746,6 +3756,12 @@ components:
             $ref: '#/components/schemas/ApiResponse'
     Conflict:
       description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiResponse'
+    RequestEntityTooLarge:
+      description: Request Entity Too Large, max allowed size exceeded
       content:
         application/json:
           schema:

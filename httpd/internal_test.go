@@ -317,6 +317,9 @@ func TestMappedStatusCode(t *testing.T) {
 	err = os.ErrNotExist
 	code = getMappedStatusCode(err)
 	assert.Equal(t, http.StatusNotFound, code)
+	err = common.ErrQuotaExceeded
+	code = getMappedStatusCode(err)
+	assert.Equal(t, http.StatusRequestEntityTooLarge, code)
 	err = os.ErrClosed
 	code = getMappedStatusCode(err)
 	assert.Equal(t, http.StatusInternalServerError, code)
@@ -1406,7 +1409,7 @@ func TestProxyHeaders(t *testing.T) {
 	}
 	err = b.parseAllowedProxy()
 	assert.NoError(t, err)
-	server := newHttpdServer(b, "", "", CorsConfig{Enabled: true})
+	server := newHttpdServer(b, "", "", CorsConfig{Enabled: true}, "")
 	server.initializeRouter()
 	testServer := httptest.NewServer(server.router)
 	defer testServer.Close()
@@ -1492,7 +1495,7 @@ func TestRecoverer(t *testing.T) {
 		EnableWebAdmin:  true,
 		EnableWebClient: false,
 	}
-	server := newHttpdServer(b, "../static", "", CorsConfig{})
+	server := newHttpdServer(b, "../static", "", CorsConfig{}, "../openapi")
 	server.initializeRouter()
 	server.router.Get(recoveryPath, func(w http.ResponseWriter, r *http.Request) {
 		panic("panic")
@@ -1607,7 +1610,7 @@ func TestWebAdminRedirect(t *testing.T) {
 		EnableWebAdmin:  true,
 		EnableWebClient: false,
 	}
-	server := newHttpdServer(b, "../static", "", CorsConfig{})
+	server := newHttpdServer(b, "../static", "", CorsConfig{}, "../openapi")
 	server.initializeRouter()
 	testServer := httptest.NewServer(server.router)
 	defer testServer.Close()

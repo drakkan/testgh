@@ -132,7 +132,8 @@ var (
 	// ErrNoInitRequired defines the error returned by InitProvider if no inizialization/update is required
 	ErrNoInitRequired = errors.New("the data provider is up to date")
 	// ErrInvalidCredentials defines the error to return if the supplied credentials are invalid
-	ErrInvalidCredentials    = errors.New("invalid credentials")
+	ErrInvalidCredentials = errors.New("invalid credentials")
+	// ErrLoginNotAllowedFromIP defines the error to return if login is denied from the current IP
 	ErrLoginNotAllowedFromIP = errors.New("login is not allowed from this IP")
 	isAdminCreated           = int32(0)
 	validTLSUsernames        = []string{string(sdk.TLSUsernameNone), string(sdk.TLSUsernameCN)}
@@ -1620,18 +1621,21 @@ func checkEmptyFiltersStruct(user *User) {
 
 func validateFilters(user *User) error {
 	checkEmptyFiltersStruct(user)
+	user.Filters.DeniedIP = util.RemoveDuplicates(user.Filters.DeniedIP)
 	for _, IPMask := range user.Filters.DeniedIP {
 		_, _, err := net.ParseCIDR(IPMask)
 		if err != nil {
 			return util.NewValidationError(fmt.Sprintf("could not parse denied IP/Mask %#v : %v", IPMask, err))
 		}
 	}
+	user.Filters.AllowedIP = util.RemoveDuplicates(user.Filters.AllowedIP)
 	for _, IPMask := range user.Filters.AllowedIP {
 		_, _, err := net.ParseCIDR(IPMask)
 		if err != nil {
 			return util.NewValidationError(fmt.Sprintf("could not parse allowed IP/Mask %#v : %v", IPMask, err))
 		}
 	}
+	user.Filters.DeniedLoginMethods = util.RemoveDuplicates(user.Filters.DeniedLoginMethods)
 	if len(user.Filters.DeniedLoginMethods) >= len(ValidLoginMethods) {
 		return util.NewValidationError("invalid denied_login_methods")
 	}
@@ -1640,6 +1644,7 @@ func validateFilters(user *User) error {
 			return util.NewValidationError(fmt.Sprintf("invalid login method: %#v", loginMethod))
 		}
 	}
+	user.Filters.DeniedProtocols = util.RemoveDuplicates(user.Filters.DeniedProtocols)
 	if len(user.Filters.DeniedProtocols) >= len(ValidProtocols) {
 		return util.NewValidationError("invalid denied_protocols")
 	}
@@ -1653,6 +1658,7 @@ func validateFilters(user *User) error {
 			return util.NewValidationError(fmt.Sprintf("invalid TLS username: %#v", user.Filters.TLSUsername))
 		}
 	}
+	user.Filters.WebClient = util.RemoveDuplicates(user.Filters.WebClient)
 	for _, opts := range user.Filters.WebClient {
 		if !util.IsStringInSlice(opts, sdk.WebClientOptions) {
 			return util.NewValidationError(fmt.Sprintf("invalid web client options %#v", opts))

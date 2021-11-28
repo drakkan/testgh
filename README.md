@@ -194,7 +194,7 @@ After starting SFTPGo you can manage users and folders using:
 
 To support embedded data providers like `bolt` and `SQLite` we can't have a CLI that directly write users and folders to the data provider, we always have to use the REST API.
 
-Full details for users, folders, admins and other resources are documented in the [OpenAPI](/httpd/schema/openapi.yaml) schema. If you want to render the schema without importing it manually, you can explore it on [Stoplight](https://sftpgo.stoplight.io/docs/sftpgo/openapi.yaml).
+Full details for users, folders, admins and other resources are documented in the [OpenAPI](/openapi/openapi.yaml) schema. If you want to render the schema without importing it manually, you can explore it on [Stoplight](https://sftpgo.stoplight.io/docs/sftpgo/openapi.yaml).
 
 ## Tutorials
 
@@ -298,6 +298,8 @@ Thank you [ysura](https://www.ysura.com/) for granting me stable access to a tes
 I'd like to make SFTPGo into a sustainable long term project and your [sponsorship](https://github.com/sponsors/drakkan) will really help :heart:
 
 Thank you to our sponsors!
+
+[<img src="https://www.7digital.com/wp-content/themes/sevendigital/images/top_logo.png" alt="7digital logo">](https://www.7digital.com/)
 
 ## License
 

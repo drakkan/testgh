@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -37,20 +38,29 @@ var (
 type httpdServer struct {
 	binding           Binding
 	staticFilesPath   string
+	openAPIPath       string
 	enableWebAdmin    bool
 	enableWebClient   bool
+	renderOpenAPI     bool
 	router            *chi.Mux
 	tokenAuth         *jwtauth.JWTAuth
 	signingPassphrase string
 	cors              CorsConfig
 }
 
-func newHttpdServer(b Binding, staticFilesPath, signingPassphrase string, cors CorsConfig) *httpdServer {
+func newHttpdServer(b Binding, staticFilesPath, signingPassphrase string, cors CorsConfig,
+	openAPIPath string,
+) *httpdServer {
+	if openAPIPath == "" {
+		b.RenderOpenAPI = false
+	}
 	return &httpdServer{
 		binding:           b,
 		staticFilesPath:   staticFilesPath,
+		openAPIPath:       openAPIPath,
 		enableWebAdmin:    b.EnableWebAdmin,
 		enableWebClient:   b.EnableWebClient,
+		renderOpenAPI:     b.RenderOpenAPI,
 		signingPassphrase: signingPassphrase,
 		cors:              cors,
 	}
@@ -816,6 +826,7 @@ func (s *httpdServer) refreshClientToken(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
+	tokenClaims.Permissions = user.Filters.WebClient
 	logger.Debug(logSender, "", "cookie refreshed for user %#v", user.Username)
 	tokenClaims.createAndSetCookie(w, r, s.tokenAuth, tokenAudienceWebClient) //nolint:errcheck
 }
@@ -837,6 +848,7 @@ func (s *httpdServer) refreshAdminToken(w http.ResponseWriter, r *http.Request, 
 		logger.Debug(logSender, "", "admin %#v cannot login from %v, unable to refresh cookie", admin.Username, r.RemoteAddr)
 		return
 	}
+	tokenClaims.Permissions = admin.Permissions
 	logger.Debug(logSender, "", "cookie refreshed for admin %#v", admin.Username)
 	tokenClaims.createAndSetCookie(w, r, s.tokenAuth, tokenAudienceWebAdmin) //nolint:errcheck
 }
@@ -938,6 +950,17 @@ func (s *httpdServer) redirectToWebPath(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+func (s *httpdServer) isStaticFileURL(r *http.Request) bool {
+	var urlPath string
+	rctx := chi.RouteContext(r.Context())
+	if rctx != nil && rctx.RoutePath != "" {
+		urlPath = rctx.RoutePath
+	} else {
+		urlPath = r.URL.Path
+	}
+	return !strings.HasPrefix(urlPath, webOpenAPIPath) && !strings.HasPrefix(urlPath, webStaticFilesPath)
+}
+
 func (s *httpdServer) initializeRouter() {
 	s.tokenAuth = jwtauth.New(jwa.HS256.String(), getSigningKey(s.signingPassphrase), nil)
 	s.router = chi.NewRouter()
@@ -958,7 +981,8 @@ func (s *httpdServer) initializeRouter() {
 		s.router.Use(c.Handler)
 	}
 	s.router.Use(middleware.GetHead)
-	s.router.Use(middleware.StripSlashes)
+	// StripSlashes causes infinite redirects at the root path if used with http.FileServer
+	s.router.Use(middleware.Maybe(middleware.StripSlashes, s.isStaticFileURL))
 
 	s.router.NotFound(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestSize)
@@ -1133,6 +1157,13 @@ func (s *httpdServer) initializeRouter() {
 		router.With(checkHTTPUserPerm(sdk.WebClientSharesDisabled)).Delete(userSharesPath+"/{id}", deleteShare)
 	})
 
+	if s.renderOpenAPI {
+		s.router.Group(func(router chi.Router) {
+			router.Use(compressor.Handler)
+			fileServer(router, webOpenAPIPath, http.Dir(s.openAPIPath))
+		})
+	}
+
 	if s.enableWebAdmin || s.enableWebClient {
 		s.router.Group(func(router chi.Router) {
 			router.Use(compressor.Handler)
@@ -1192,10 +1223,10 @@ func (s *httpdServer) initializeRouter() {
 
 			router.Get(webClientLogoutPath, handleWebClientLogout)
 			router.With(s.refreshCookie).Get(webClientFilesPath, handleClientGetFiles)
+			router.With(s.refreshCookie).Get(webClientViewPDFPath, handleClientViewPDF)
 			router.With(checkHTTPUserPerm(sdk.WebClientWriteDisabled), verifyCSRFHeader).
 				Post(webClientFilesPath, uploadUserFiles)
-			router.With(checkHTTPUserPerm(sdk.WebClientWriteDisabled), s.refreshCookie).
-				Get(webClientEditFilePath, handleClientEditFile)
+			router.With(s.refreshCookie).Get(webClientEditFilePath, handleClientEditFile)
 			router.With(checkHTTPUserPerm(sdk.WebClientWriteDisabled), verifyCSRFHeader).
 				Patch(webClientFilesPath, renameUserFile)
 			router.With(checkHTTPUserPerm(sdk.WebClientWriteDisabled), verifyCSRFHeader).
