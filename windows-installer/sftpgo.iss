@@ -10,6 +10,7 @@
     #if MyAppArch != "x86"
         #define MyAppArch64 GetEnv("SFTPGO_ISS_ARCH")
     #else
+        #define MyAppArch "x86 x64"
         #define MyAppArch64 ""
     #endif
 #else
