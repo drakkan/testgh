@@ -178,10 +178,11 @@ jobs:
         run: |
           mkdir win-portable
           copy .\sftpgo.exe .\win-portable
-          copy .\arm64\sftpgo.exe .\win-portable\sftpgo_arm64.exe
+          mkdir win-portable\arm64
+          copy .\arm64\sftpgo.exe .\win-portable\arm64\sftpgo_arm64.exe
           copy .\sftpgo.json .\win-portable
           (Get-Content .\win-portable\sftpgo.json).replace('"sqlite"', '"bolt"') | Set-Content .\win-portable\sftpgo.json
-          copy .\sftpgo.db .\win-portable
+          copy .\output\sftpgo.db .\win-portable
           copy .\LICENSE .\win-portable\LICENSE.txt
           mkdir win-portable\templates
           xcopy .\templates .\win-portable\templates\ /E
